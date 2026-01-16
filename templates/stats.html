@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Stats</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+<h1>📊 Your Habit Stats</h1>
+
+<p><strong>Total habits:</strong> {{ total }}</p>
+<p><strong>Completed today:</strong> {{ completed_today }}</p>
+<p><strong>Best streak:</strong> 🔥 {{ best_streak }}</p>
+
+<canvas id="weeklyChart" width="400" height="200"></canvas>
+
+<script type="application/json" id="chart-data">
+{
+  "labels": {{ days | default([]) | tojson }},
+  "values": {{ counts | default([]) | tojson }}
+}
+</script>
+
+<script>
+const ctx = document.getElementById("weeklyChart");
+
+const chartData = JSON.parse(
+  document.getElementById("chart-data").textContent
+);
+
+new Chart(ctx, {
+  type: "bar",
+  data: {
+    labels: chartData.labels,
+    datasets: [{
+      label: "Habits Completed",
+      data: chartData.values
+    }]
+  }
+});
+</script>
+
+
+<br>
+<a href="/">⬅ Back to Home</a>
+
+</body>
+</html>
