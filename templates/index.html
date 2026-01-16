@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <title>Habit Tracker</title>
+</head>
+<body>
+    <h1>Habit Tracker</h1>
+    <form method="POST">
+        <input type="text" name="habit" placeholder="Enter a habit" required>
+        <button type="submit">Add Habit</button>
+    </form>
+
+    <h2>Your Habits</h2>
+    <ul>
+        {% for habit in habits %}
+        <li>{{ habit["name"] }}
+            {% if habit["done"] %}
+               ✅
+            {% else %}
+               ❌
+            {% endif %}
+            <span>🔥 Streak: {{ habit["streak"] }}</span>
+            <a href="/toggle/{{ habit['id'] }}">Toggle</a>
+            <a href="/delete/{{ habit['id'] }}" style="color:red;">Delete</a>
+
+        </li>
+        {% endfor %}
+    </ul>
+</body>
+</html>
