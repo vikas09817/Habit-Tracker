@@ -24,9 +24,12 @@
             <span>🔥 Streak: {{ habit["streak"] }}</span>
             <a href="/toggle/{{ habit['id'] }}">Toggle</a>
             <a href="/delete/{{ habit['id'] }}" style="color:red;">Delete</a>
+            <small>Last done: {{ habit["last_done"] or "—" }}</small>
 
         </li>
         {% endfor %}
     </ul>
+    <a href="/stats">📊 View Stats</a>
+
 </body>
 </html>
