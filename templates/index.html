@@ -1,35 +1,55 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <title>Habit Tracker</title>
+  <title>Habit Tracker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
+
+<div class="container">
+
+  <div class="header">
     <h1>Habit Tracker</h1>
-    <form method="POST">
-        <input type="text" name="habit" placeholder="Enter a habit" required>
-        <button type="submit">Add Habit</button>
+    <div class="nav">
+      <a href="/stats">Stats</a>
+      <a href="/logout">Logout</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <form class="form" method="POST">
+      <input type="text" name="habit" placeholder="Add a new habit" required>
+      <button class="btn-primary" type="submit">Add</button>
     </form>
+  </div>
 
-    <h2>Your Habits</h2>
-    <ul>
-        {% for habit in habits %}
-        <li>{{ habit["name"] }}
-            {% if habit["done"] %}
-               ✅
-            {% else %}
-               ❌
-            {% endif %}
-            <span>🔥 Streak: {{ habit["streak"] }}</span>
-            <a href="/toggle/{{ habit['id'] }}">Toggle</a>
-            <a href="/delete/{{ habit['id'] }}" style="color:red;">Delete</a>
-            <small>Last done: {{ habit["last_done"] or "—" }}</small>
+  <div class="card">
+    <ul class="list">
+      {% for habit in habits %}
+      <li class="item">
+        <div class="left">
+          <strong>{{ habit["name"] }}</strong>
+          {% if habit["last_done"] %}
+            <span class="badge">Last: {{ habit["last_done"] }}</span>
+          {% endif %}
+          {% if habit["done"] %}
+            <span class="status done">✅</span>
+          {% else %}
+            <span class="status not">❌</span>
+          {% endif %}
+          <span class="badge">🔥 {{ habit["streak"] }}</span>
+        </div>
 
-        </li>
-        {% endfor %}
+        <div class="actions">
+          <a class="btn-ghost" href="/toggle/{{ habit['id'] }}">Toggle</a>
+          <a class="btn-danger" href="/delete/{{ habit['id'] }}">Delete</a>
+        </div>
+      </li>
+      {% endfor %}
     </ul>
-    <a href="/stats">📊 View Stats</a>
+  </div>
+
+</div>
 
 </body>
 </html>
