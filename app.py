@@ -1,7 +1,9 @@
 from flask import Flask, render_template, request, redirect, session
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import date, timedelta
-import sqlite3
+import psycopg2
+import psycopg2.extras
+import os 
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
@@ -9,48 +11,27 @@ app.secret_key = "supersecretkey"
 
 # Database connection helper
 def get_db_connection():
-    conn = sqlite3.connect("habits.db")
-    conn.row_factory = sqlite3.Row
-    return conn
+    return psycopg2.connect(
+        dbname="habit_tracker",
+        user="postgres",
+        password="your_password",
+        host="localhost",
+        port="5432"
+    )
 
-# Create table (runs once)
-conn = get_db_connection()
-conn.execute("""
-CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL
-)
-""") 
-
-conn.execute("""
-CREATE TABLE IF NOT EXISTS habits (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    done INTEGER DEFAULT 0,
-    streak INTEGER DEFAULT 0,
-    last_done TEXT,
-    user_id INTEGER,
-    FOREIGN KEY (user_id) REFERENCES users (id)
-)
-""")
-conn.commit()
-conn.close()
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
         username = request.form["username"]
         password = generate_password_hash(request.form["password"])
-
-        conn = get_db_connection()
-        conn.execute(
-            "INSERT INTO users (username, password) VALUES (?, ?)",
+        conn = get_db_connection()(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO users (username, password) VALUES (%s, %s)",
             (username, password)
         )
         conn.commit()
-        conn.close()
-
         return redirect("/login")
 
     return render_template("register.html")
@@ -63,11 +44,12 @@ def home():
 
     user_id = session["user_id"]
     conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     if request.method == "POST":
         habit_name = request.form["habit"]
-        conn.execute(
-            "INSERT INTO habits (name, user_id) VALUES (?, ?)",
+        cur.execute(
+            "INSERT INTO habits (name, user_id) VALUES (%s, %s)",
             (habit_name, user_id)
         )
         conn.commit()
@@ -103,6 +85,7 @@ def login():
 @app.route("/toggle/<int:id>")
 def toggle(id):
     conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     habit = conn.execute(
         "SELECT done, streak, last_done FROM habits WHERE id = ?",
         (id,)
