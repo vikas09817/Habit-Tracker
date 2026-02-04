@@ -12,7 +12,7 @@ app.secret_key = "supersecretkey"
 # Database connection helper
 def get_db_connection():
     return psycopg2.connect(
-        dbname="habit_tracker",
+        dbname="tracker",
         user="postgres",
         password="your_password",
         host="localhost",
@@ -25,13 +25,16 @@ def register():
     if request.method == "POST":
         username = request.form["username"]
         password = generate_password_hash(request.form["password"])
-        conn = get_db_connection()(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur = conn.cursor()
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
         cur.execute(
             "INSERT INTO users (username, password) VALUES (%s, %s)",
             (username, password)
         )
         conn.commit()
+        cur.close()
+        conn.close()
         return redirect("/login")
 
     return render_template("register.html")
@@ -55,9 +58,12 @@ def home():
         conn.commit()
         return redirect("/")
 
-    habits = conn.execute(
-        "SELECT * FROM habits WHERE user_id = ?", (user_id,)
-    ).fetchall()
+    cur.execute(
+        "SELECT * FROM habits WHERE user_id = %s", (user_id,)
+    )
+    habits = cur.fetchall()
+
+    cur.close()
     conn.close()
 
     return render_template("index.html", habits=habits)
@@ -70,9 +76,13 @@ def login():
         password = request.form["password"]
 
         conn = get_db_connection()
-        user = conn.execute(
-            "SELECT * FROM users WHERE username = ?", (username,)
-        ).fetchone()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    
+        cur.execute(
+            "SELECT * FROM users WHERE username = %s", (username,)
+        )
+        user = cur.fetchone()
+        cur.close()
         conn.close()
 
         if user and check_password_hash(user["password"], password):
@@ -81,48 +91,69 @@ def login():
     
     return render_template("login.html")
 
-
 @app.route("/toggle/<int:id>")
 def toggle(id):
+    if "user_id" not in session:
+        return redirect("/login")
+
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    habit = conn.execute(
-        "SELECT done, streak, last_done FROM habits WHERE id = ?",
-        (id,)
-    ).fetchone()
 
-    today = date.today()
+    # 1️⃣ Read habit
+    cur.execute(
+        """
+        SELECT streak, last_done
+        FROM habits
+        WHERE id = %s AND user_id = %s
+        """,
+        (id, session["user_id"])
+    )
+    habit = cur.fetchone()
 
-    if habit["last_done"]:
-        last_done = date.fromisoformat(habit["last_done"])
-    else:
-        last_done = None
-
-    # If already marked today, do nothing
-    if last_done == today:
+    if not habit:
+        cur.close()
         conn.close()
         return redirect("/")
 
-    # Update streak logic
+    today = date.today()
+    last_done = habit["last_done"]
+
+    # 2️⃣ If already done today → no change
+    if last_done == today:
+        cur.close()
+        conn.close()
+        return redirect("/")
+
+    # 3️⃣ Calculate new streak
     if last_done == today - timedelta(days=1):
         new_streak = habit["streak"] + 1
     else:
         new_streak = 1
 
-    conn.execute(
-        "UPDATE habits SET done = 1, streak = ?, last_done = ? WHERE id = ?",
-        (new_streak, today.isoformat(), id)
+    # 4️⃣ Update
+    cur.execute(
+        """
+        UPDATE habits
+        SET done = TRUE, streak = %s, last_done = %s
+        WHERE id = %s AND user_id = %s
+        """,
+        (new_streak, today, id, session["user_id"])
     )
+
     conn.commit()
+    cur.close()
     conn.close()
 
     return redirect("/")
 
+
 @app.route("/delete/<int:id>")
 def delete(id):
     conn = get_db_connection()
-    conn.execute("DELETE FROM habits WHERE id = ?", (id,))
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("DELETE FROM habits WHERE id = %s", (id,))
     conn.commit()
+    cur.close()
     conn.close()
     return redirect("/")
 
@@ -133,44 +164,45 @@ def stats():
 
     user_id = session["user_id"]
     conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    total_habits = conn.execute(
-        "SELECT COUNT(*) FROM habits WHERE user_id = ?",
+
+    cur.execute(
+        "SELECT COUNT(*) AS total FROM habits WHERE user_id = %s",
         (user_id,)
-    ).fetchone()[0]
+    )
+    total_habits = cur.fetchone()["total"]
 
-    today = date.today().isoformat()
+    today = date.today()
 
-    completed_today = conn.execute(
-        "SELECT COUNT(*) FROM habits WHERE user_id = ? AND last_done = ?",
+    cur.execute(
+        "SELECT COUNT(*) AS completed FROM habits WHERE user_id = %s AND last_done = %s",
         (user_id, today)
-    ).fetchone()[0]
+    )
+    completed_today = cur.fetchone()["completed"]
 
-    best_streak = conn.execute(
-        "SELECT MAX(streak) FROM habits WHERE user_id = ?",
+    cur.execute(
+        "SELECT MAX(streak) AS best FROM habits WHERE user_id = %s",
         (user_id,)
-    ).fetchone()[0] or 0
+    )
+    best_streak = cur.fetchone()["best"]
 
     # Weekly data (last 7 days)
     days = []
     counts = []
 
     for i in range(6, -1, -1):
-        day = (date.today() - timedelta(days=i)).isoformat()
-        count = conn.execute(
-            "SELECT COUNT(*) FROM habits WHERE user_id = ? AND last_done = ?",
+        day = (date.today() - timedelta(days=i))
+        cur.execute(
+            "SELECT COUNT(*) AS count FROM habits WHERE user_id = %s AND last_done = %s",
             (user_id, day)
-        ).fetchone()[0]
+        )
+        count = cur.fetchone()['count']
         days.append(day)
         counts.append(count)
 
+    cur.close()
     conn.close()
-
-    if days is None:
-        days = []
-    if counts is None:
-        counts = []
-    
 
     return render_template(
         "stats.html",
