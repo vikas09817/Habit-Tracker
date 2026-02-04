@@ -12,9 +12,9 @@ app.secret_key = "supersecretkey"
 # Database connection helper
 def get_db_connection():
     return psycopg2.connect(
-        dbname="tracker",
+        dbname="tracker_DB",
         user="postgres",
-        password="your_password",
+        password="postgres123",
         host="localhost",
         port="5432"
     )
