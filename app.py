@@ -1,22 +1,25 @@
 from flask import Flask, render_template, request, redirect, session
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import date, timedelta
+from dotenv import load_dotenv
 import psycopg2
 import psycopg2.extras
 import os 
 
+load_dotenv()
+
 app = Flask(__name__)
-app.secret_key = "supersecretkey"
+app.secret_key = os.environ.get("SECRET_KEY")
 
 
 # Database connection helper
 def get_db_connection():
     return psycopg2.connect(
-        dbname="tracker_DB",
-        user="postgres",
-        password="postgres123",
-        host="localhost",
-        port="5432"
+        dbname= os.environ.get("DB_NAME"),
+        user= os.environ.get("DB_USER"),
+        password= os.environ.get("DB_PASSWORD"),
+        host= os.environ.get("DB_HOST"),
+        port= int(os.environ.get("DB_PORT", 5432))
     )
 
 
@@ -91,6 +94,12 @@ def login():
     
     return render_template("login.html")
 
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.clear()
+    return redirect("/login")
+
+
 @app.route("/toggle/<int:id>")
 def toggle(id):
     if "user_id" not in session:
@@ -151,7 +160,7 @@ def toggle(id):
 def delete(id):
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("DELETE FROM habits WHERE id = %s", (id,))
+    cur.execute("DELETE FROM habits WHERE id = %s AND user_id = %s", (id, session["user_id"]))
     conn.commit()
     cur.close()
     conn.close()
