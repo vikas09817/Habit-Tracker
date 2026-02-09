@@ -12,7 +12,11 @@
     <h1>Habit Tracker</h1>
     <div class="nav">
       <a href="/stats">Stats</a>
-      <a href="/logout">Logout</a>
+
+      <form action="/logout" method="post" style="display:inline;">
+        <button type="submit">Logout</button>
+      </form>
+
     </div>
   </div>
 
@@ -32,7 +36,7 @@
           {% if habit["last_done"] %}
             <span class="badge">Last: {{ habit["last_done"] }}</span>
           {% endif %}
-          {% if habit["done"] %}
+          {% if habit["done_today"] %}
             <span class="status done">✅</span>
           {% else %}
             <span class="status not">❌</span>

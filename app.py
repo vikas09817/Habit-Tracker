@@ -9,7 +9,7 @@ import os
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY")
+app.secret_key = os.environ.get("SECRET_KEY","supersecretkey")
 
 
 # Database connection helper
@@ -21,7 +21,6 @@ def get_db_connection():
         host= os.environ.get("DB_HOST"),
         port= int(os.environ.get("DB_PORT", 5432))
     )
-
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -49,25 +48,33 @@ def home():
         return redirect("/login")
 
     user_id = session["user_id"]
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    if request.method == "POST":
-        habit_name = request.form["habit"]
-        cur.execute(
-            "INSERT INTO habits (name, user_id) VALUES (%s, %s)",
-            (habit_name, user_id)
-        )
-        conn.commit()
-        return redirect("/")
+    with get_db_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
 
-    cur.execute(
-        "SELECT * FROM habits WHERE user_id = %s", (user_id,)
-    )
-    habits = cur.fetchall()
+            if request.method == "POST":
+                habit_name = request.form["habit"]
+                cur.execute(
+                    "INSERT INTO habits (name, user_id) VALUES (%s, %s)",
+                    (habit_name, user_id)
+                )
+                conn.commit()
+                return redirect("/")
 
-    cur.close()
-    conn.close()
+            cur.execute(
+                """
+                SELECT h.id, h.name, h.streak,
+                    EXISTS (
+                        SELECT 1 FROM habit_completions hc
+                        WHERE hc.habit_id = h.id
+                        AND hc.completed_on = CURRENT_DATE
+                    ) AS done_today
+                FROM habits h
+                WHERE h.user_id = %s
+                """,
+                (user_id,)
+            )
+            habits = cur.fetchall()
 
     return render_template("index.html", habits=habits)
 
@@ -105,53 +112,75 @@ def toggle(id):
     if "user_id" not in session:
         return redirect("/login")
 
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-
-    # 1️⃣ Read habit
-    cur.execute(
-        """
-        SELECT streak, last_done
-        FROM habits
-        WHERE id = %s AND user_id = %s
-        """,
-        (id, session["user_id"])
-    )
-    habit = cur.fetchone()
-
-    if not habit:
-        cur.close()
-        conn.close()
-        return redirect("/")
-
     today = date.today()
-    last_done = habit["last_done"]
 
-    # 2️⃣ If already done today → no change
-    if last_done == today:
-        cur.close()
-        conn.close()
-        return redirect("/")
+    with get_db_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            # 1️⃣ Verify the habit exists and belongs to the current user
+            cur.execute(
+                "SELECT id FROM habits WHERE id = %s AND user_id = %s",
+                (id, session["user_id"])
+            )
+            if not cur.fetchone():
+                return redirect("/")
+            # 2️⃣ Check if today's completion already exists for this habit
+            cur.execute(
+                """
+                SELECT 1 FROM habit_completions
+                WHERE habit_id = %s AND completed_on = %s
+                """,
+                (id, today)
+            )
+            exists = cur.fetchone()
 
-    # 3️⃣ Calculate new streak
-    if last_done == today - timedelta(days=1):
-        new_streak = habit["streak"] + 1
-    else:
-        new_streak = 1
+            # 3️⃣ Toggle logic
+            if exists:
+                # 🔄 UNTOGGLE: user clicked again → remove today's completion
+                cur.execute(
+                    "DELETE FROM habit_completions WHERE habit_id = %s AND completed_on = %s",
+                    (id, today)
+                )
+            else:
+                # ✅ TOGGLE ON: insert a completion record for today
+                cur.execute(
+                    "INSERT INTO habit_completions (habit_id, completed_on) VALUES (%s, %s)",
+                    (id, today)
+                )
 
-    # 4️⃣ Update
-    cur.execute(
-        """
-        UPDATE habits
-        SET done = TRUE, streak = %s, last_done = %s
-        WHERE id = %s AND user_id = %s
-        """,
-        (new_streak, today, id, session["user_id"])
-    )
+            # 4️⃣ Recompute streak from completion history
+            # We calculate streak dynamically to keep it accurate and recoverable
+            cur.execute(
+                """
+                SELECT completed_on
+                FROM habit_completions
+                WHERE habit_id = %s
+                ORDER BY completed_on DESC
+                """,
+                (id,)
+            )
 
-    conn.commit()
-    cur.close()
-    conn.close()
+            dates = [r["completed_on"] for r in cur.fetchall()]
+
+            # Count consecutive days starting from the most recent completion
+            streak, prev = 0, None
+            for d in dates:
+                if prev is None:
+                    # First (most recent) completion always starts the streak
+                    streak = 1
+                elif prev - timedelta(days=1) == d:
+                    # Consecutive day → streak continues
+                    streak += 1
+                else:
+                    # Gap found → streak ends
+                    break
+                prev = d
+
+            cur.execute(
+                "UPDATE habits SET streak = %s WHERE id = %s",
+                (streak, id)
+            )
+
+            conn.commit()
 
     return redirect("/")
 
@@ -185,8 +214,13 @@ def stats():
     today = date.today()
 
     cur.execute(
-        "SELECT COUNT(*) AS completed FROM habits WHERE user_id = %s AND last_done = %s",
-        (user_id, today)
+        """
+        SELECT COUNT(*) AS completed
+        FROM habit_completions hc
+        JOIN habits h ON h.id = hc.habit_id
+        WHERE h.user_id = %s AND hc.completed_on = CURRENT_DATE
+        """,
+        (user_id,)
     )
     completed_today = cur.fetchone()["completed"]
 
@@ -203,7 +237,12 @@ def stats():
     for i in range(6, -1, -1):
         day = (date.today() - timedelta(days=i))
         cur.execute(
-            "SELECT COUNT(*) AS count FROM habits WHERE user_id = %s AND last_done = %s",
+            """
+            SELECT COUNT(*) AS count
+            FROM habit_completions hc
+            JOIN habits h ON h.id = hc.habit_id
+            WHERE h.user_id = %s AND hc.completed_on = %s
+            """,
             (user_id, day)
         )
         count = cur.fetchone()['count']
