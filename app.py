@@ -54,16 +54,24 @@ def home():
 
             if request.method == "POST":
                 habit_name = request.form["habit"]
+                category = request.form.get("category") or "General"
+                color = request.form["color"]
+                reminder_time = request.form.get("reminder_time") or None
                 cur.execute(
-                    "INSERT INTO habits (name, user_id) VALUES (%s, %s)",
-                    (habit_name, user_id)
+                    "INSERT INTO habits (name, user_id, category, color, reminder_time) VALUES (%s, %s, %s, %s, %s)",
+                    (habit_name, user_id, category, color, reminder_time)
                 )
                 conn.commit()
                 return redirect("/")
 
             cur.execute(
                 """
-                SELECT h.id, h.name, h.streak,
+                SELECT h.id, h.name, h.category, h.color, h.streak,
+                    (
+                        SELECT MAX(hc.completed_on)
+                        FROM habit_completions hc
+                        WHERE hc.habit_id = h.id
+                    ) AS last_done,
                     EXISTS (
                         SELECT 1 FROM habit_completions hc
                         WHERE hc.habit_id = h.id
@@ -118,7 +126,7 @@ def toggle(id):
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             # 1️⃣ Verify the habit exists and belongs to the current user
             cur.execute(
-                "SELECT id FROM habits WHERE id = %s AND user_id = %s",
+                "SELECT id FROM habits WHERE id = %s AND user_id = %s AND is_deleted = FALSE",
                 (id, session["user_id"])
             )
             if not cur.fetchone():
@@ -184,12 +192,39 @@ def toggle(id):
 
     return redirect("/")
 
+@app.route("/edit/<int:id>", methods=["POST"])
+def edit(id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    name = request.form["name"]
+    category = request.form["category"]
+    color = request.form["color"]
+
+    with get_db_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+
+            cur.execute(
+                """
+                UPDATE habits
+                SET name = %s, category = %s, color = %s
+                WHERE id = %s AND user_id = %s AND is_deleted = FALSE
+                """,
+                (name, category, color, id, session["user_id"])
+            )
+
+    conn.commit()
+
+    conn.close()
+
+    return redirect("/")
+
 
 @app.route("/delete/<int:id>")
 def delete(id):
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("DELETE FROM habits WHERE id = %s AND user_id = %s", (id, session["user_id"]))
+    cur.execute("UPDATE habits SET is_deleted = TRUE WHERE id = %s AND user_id = %s", (id, session["user_id"]))
     conn.commit()
     cur.close()
     conn.close()

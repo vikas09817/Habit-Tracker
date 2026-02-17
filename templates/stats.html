@@ -14,29 +14,30 @@
 
 <canvas id="weeklyChart" width="400" height="200"></canvas>
 
-<script type="application/json" id="chart-data">
-{
-  "labels": {{ days | default([]) | tojson }},
-  "values": {{ counts | default([]) | tojson }}
-}
-</script>
-
 <script>
-const ctx = document.getElementById("weeklyChart");
 
-const chartData = JSON.parse(
-  document.getElementById("chart-data").textContent
-);
+const ctx = document.getElementById('weeklyChart');
+const labels = {{ days|tojson }};
+const values = {{ counts|tojson }};
 
 new Chart(ctx, {
-  type: "bar",
-  data: {
-    labels: chartData.labels,
-    datasets: [{
-      label: "Habits Completed",
-      data: chartData.values
-    }]
-  }
+    type: 'bar',
+    data: {
+        labels: labels,
+        datasets: [{
+            label: 'Completed Habits',
+            data: values,
+            backgroundColor: "#4CAF50"
+        }]
+    },
+    options: {
+        responsive: true,
+        scales: {
+            y: {
+                beginAtZero: true
+            }
+        }
+    }
 });
 </script>
 
