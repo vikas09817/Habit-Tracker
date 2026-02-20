@@ -40,6 +40,7 @@
       <li class="item">
         <div class="left">
           <strong>{{ habit.name }}</strong>
+          <div class="meta">
           {% if habit["last_done"] %}
             <span class="badge">Last Done: {{ habit["last_done"] }}</span>
           {% endif %}
@@ -49,6 +50,7 @@
             <span class="status not">❌</span>
           {% endif %}
           <span class="badge">🔥 {{ habit.streak }}</span>
+          </div>
         </div>
         <div style="border-left: 5px solid {{ habit.color }};">
             {{ habit.name }} ({{ habit.category }})
@@ -56,7 +58,10 @@
 
         <div class="actions">
           <a class="btn-ghost" href="/toggle/{{ habit['id'] }}">Toggle</a>
-          <a class="btn-danger" href="/delete/{{ habit['id'] }}">Delete</a>
+          <a class="btn-ghost" href="/calendar/{{ habit.id }}">Calendar</a>
+          <form action="/delete/{{ habit.id }}" method="POST" style="display:inline;">
+              <button type="submit" class="btn-danger">Delete</button>
+          </form>
         </div>
       </li>
       {% endfor %}

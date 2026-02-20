@@ -119,3 +119,43 @@ button {
 .nav button:hover {
   text-decoration: underline;
 }
+
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(14, 20px);  /* 14 columns */
+    gap: 4px;
+}
+
+.day-box {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+}
+
+/* Heat levels */
+.level-0 { background: #ebedf0; }
+.level-4 { background: #2ecc71; }
+
+.actions {
+    display: flex;
+    gap: 8px;
+}
+
+.item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.left {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
+.meta {
+    display: flex;
+    gap: 10px;
+    font-size: 14px;
+    color: gray;
+}

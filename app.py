@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, redirect, session
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from dotenv import load_dotenv
 import psycopg2
 import psycopg2.extras
@@ -78,7 +78,7 @@ def home():
                         AND hc.completed_on = CURRENT_DATE
                     ) AS done_today
                 FROM habits h
-                WHERE h.user_id = %s
+                WHERE h.user_id = %s AND h.is_deleted = FALSE
                 """,
                 (user_id,)
             )
@@ -170,18 +170,15 @@ def toggle(id):
             dates = [r["completed_on"] for r in cur.fetchall()]
 
             # Count consecutive days starting from the most recent completion
-            streak, prev = 0, None
+            streak = 0
+            expected_day = date.today()
+
             for d in dates:
-                if prev is None:
-                    # First (most recent) completion always starts the streak
-                    streak = 1
-                elif prev - timedelta(days=1) == d:
-                    # Consecutive day → streak continues
+                if d == expected_day:
                     streak += 1
+                    expected_day -= timedelta(days=1)
                 else:
-                    # Gap found → streak ends
                     break
-                prev = d
 
             cur.execute(
                 "UPDATE habits SET streak = %s WHERE id = %s",
@@ -191,6 +188,32 @@ def toggle(id):
             conn.commit()
 
     return redirect("/")
+
+@app.route("/calendar/<int:habit_id>")
+def calendar_view(habit_id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    with get_db_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT hc.completed_on
+                FROM habit_completions hc
+                JOIN habits h ON h.id = hc.habit_id
+                WHERE hc.habit_id = %s
+                AND h.user_id = %s
+                AND h.is_deleted = FALSE
+                AND hc.completed_on >= CURRENT_DATE - INTERVAL '90 days'
+            """, (habit_id, session["user_id"]))
+
+            completions = {row["completed_on"] for row in cur.fetchall()}
+
+    return render_template(
+        "calendar.html",
+        completions=completions,
+        datetime=datetime,
+        timedelta=timedelta
+    )
 
 @app.route("/edit/<int:id>", methods=["POST"])
 def edit(id):
@@ -220,14 +243,22 @@ def edit(id):
     return redirect("/")
 
 
-@app.route("/delete/<int:id>")
+@app.route("/delete/<int:id>", methods=["POST"])
 def delete(id):
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("UPDATE habits SET is_deleted = TRUE WHERE id = %s AND user_id = %s", (id, session["user_id"]))
-    conn.commit()
-    cur.close()
-    conn.close()
+    if "user_id" not in session:
+        return redirect("/login")
+
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE habits
+                SET is_deleted = TRUE
+                WHERE id = %s AND user_id = %s
+                """,
+                (id, session["user_id"])
+            )
+
     return redirect("/")
 
 @app.route("/stats")

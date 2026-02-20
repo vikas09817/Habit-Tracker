@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Calendar</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="container">
+
+    <div class="header">
+        <h1>Last 90 Days</h1>
+        <a href="/">← Back</a>
+    </div>
+
+    <div class="card">
+        <div class="calendar-grid">
+            {% for i in range(90) %}
+                {% set day = (datetime.utcnow().date() - timedelta(days=89-i)) %}
+
+                <div class="day-box
+                    {% if day in completions %}
+                        level-4
+                    {% else %}
+                        level-0
+                    {% endif %}
+                ">
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+
+</div>
+
+</body>
+</html>
